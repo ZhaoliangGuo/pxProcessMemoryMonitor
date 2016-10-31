@@ -23,13 +23,13 @@ class CAboutDlg : public CDialogEx
 public:
 	CAboutDlg();
 
-// 对话框数据
+	// 对话框数据
 	enum { IDD = IDD_ABOUTBOX };
 
-	protected:
+protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 
-// 实现
+	// 实现
 protected:
 	DECLARE_MESSAGE_MAP()
 };
@@ -74,6 +74,7 @@ BEGIN_MESSAGE_MAP(CpxProcessMemoryMonitorDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_START_MONITOR, &CpxProcessMemoryMonitorDlg::OnBnClickedButtonStartMonitor)
 	ON_BN_CLICKED(IDC_BUTTON_STOP_MONITOR,  &CpxProcessMemoryMonitorDlg::OnBnClickedButtonStopMonitor)
 	ON_BN_CLICKED(IDC_BUTTON_UNIT_TEST,     &CpxProcessMemoryMonitorDlg::OnBnClickedButtonTest)
+	ON_MESSAGE(WM_UPDATE_MEMORY_VALUE,      &CpxProcessMemoryMonitorDlg::UpdateMemoryValue)
 END_MESSAGE_MAP()
 
 
@@ -108,8 +109,15 @@ BOOL CpxProcessMemoryMonitorDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// 设置大图标
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
+		// 获取主界面的句柄
+	CWnd *pWnd  = AfxGetMainWnd();
+	pWnd->GetWindowText(g_strAppTitle);
+	g_hAppWnd = ::FindWindow(NULL, g_strAppTitle);
+
 	// TODO: 在此添加额外的初始化代码
 	Init();
+
+	OnBnClickedButtonStartMonitor();
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -190,10 +198,14 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 
 	CpxProcessMemoryMonitorDlg *pCpxProcessMemoryMonitorDlg = (CpxProcessMemoryMonitorDlg *)pParam;
 
-	double dProcessMemSize = 0;
+	double dProcessCommitMemSize = 0;
+	double dProcessWorkingSet    = 0;
+
 	char *pszProcessName = (char *)pCpxProcessMemoryMonitorDlg->m_strProcessName.GetBuffer(pCpxProcessMemoryMonitorDlg->m_strProcessName.GetLength());
 
 	char szLogFileName[_MAX_PATH] = {0};
+
+	PROCESS_MEMORY_COUNTERS pmc;
 
 	while (!g_bStop)
 	{	
@@ -207,13 +219,20 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 			time.wMonth, 
 			time.wDay);
 
-		dProcessMemSize = GetProcessMemorySize(pszProcessName);
+		memset(&pmc, 0, sizeof(PROCESS_MEMORY_COUNTERS));
+		pmc =  GetProcessMemoryCounters(pszProcessName);
 
-		/*int nG = dProcessMemSize/1024;
-		double nDeltaM = dProcessMemSize - nG * 1024; 
+		// 提交内存大小
+		//pmc.PagefileUsage = 16 * 1024 * 1024 * 1024; // test  
+		dProcessCommitMemSize = pmc.PagefileUsage  * 1.0/(1024*1024);
+		dProcessWorkingSet    = pmc.WorkingSetSize * 1.0/(1024*1024);
 
+		//dProcessCommitMemSize = (static_cast<unsigned long>(pmc.PagefileUsage)) * 1.0/(1024*1024);
+		//dProcessWorkingSet    = (static_cast<unsigned long>(pmc.WorkingSetSize)) * 1.0/(1024*1024);
+			
 		FILE *fp = fopen(szLogFileName, "at");
-		fprintf(fp, "%4d-%02d-%02d %02d:%02d:%02d.%03d         %2dG-%4.2fM \n",
+		fprintf(fp, 
+			"%4d-%02d-%02d %02d:%02d:%02d.%03d  Commit Memory: %5.2fM; Current Working Set: %5.2fM\n",
 			time.wYear,
 			time.wMonth,
 			time.wDay,
@@ -221,27 +240,18 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 			time.wMinute, 
 			time.wSecond,
 			time.wMilliseconds,
-			nG,
-			nDeltaM
-			);
-
-		int nG = dProcessMemSize/1024;
-		double nDeltaM = dProcessMemSize - nG * 1024; */
-
-		FILE *fp = fopen(szLogFileName, "at");
-		fprintf(fp, "%4d-%02d-%02d %02d:%02d:%02d.%03d        %5.2fM \n",
-			time.wYear,
-			time.wMonth,
-			time.wDay,
-			time.wHour,
-			time.wMinute, 
-			time.wSecond,
-			time.wMilliseconds,
-			dProcessMemSize
+			dProcessCommitMemSize,
+			dProcessWorkingSet
 			);
 
 		fflush(fp);
 		fclose(fp);
+
+		g_strMsg.Format("Commit Memory: %5.2fM; Current Working Set: %5.2fM",
+			dProcessCommitMemSize,
+			dProcessWorkingSet);
+
+		::PostMessage(g_hAppWnd, WM_UPDATE_MEMORY_VALUE, NULL, (LPARAM)g_strMsg.GetBuffer());
 
 		Sleep(500);
 	}
@@ -284,7 +294,7 @@ void CpxProcessMemoryMonitorDlg::OnBnClickedButtonTest()
 	//AfxMessageBox(strProcessId);
 
 	// test GetProcessMemorySize
-	double dProcessMemSize = GetProcessMemorySize(pszProcessName);
+	double dProcessMemSize = GetProcessCommitMemorySize(pszProcessName);
 
 	CString strProcessMemSize("");
 	strProcessMemSize.Format("%.2f", dProcessMemSize);
@@ -299,7 +309,11 @@ void CpxProcessMemoryMonitorDlg::OnBnClickedButtonTest()
 	strMsg += strProcessMemSize;
 	strMsg += "M.";
 
-	AfxMessageBox(strMsg);
+	//AfxMessageBox(strMsg);
+
+	PROCESS_MEMORY_COUNTERS pmc;
+	memset(&pmc, 0, sizeof(PROCESS_MEMORY_COUNTERS));
+	pmc =  GetProcessMemoryCounters(pszProcessName);
 }
 
 void CpxProcessMemoryMonitorDlg::Init()
@@ -327,5 +341,38 @@ void CpxProcessMemoryMonitorDlg::SaveConfig()
 	WritePrivateProfileString ("Monitor", "ProcessName",   m_strProcessName,  g_strConfFile);
 
 	UpdateData(FALSE);
+}
+
+LRESULT CpxProcessMemoryMonitorDlg::UpdateMemoryValue( WPARAM wParam, LPARAM lParam )
+{
+	UpdateData();
+
+	char *pszMsg = (char *)lParam;
+	CString strMsg;
+
+	try
+	{
+		strMsg.Format("%s", pszMsg);
+	}
+	catch (CException* e)
+	{
+		TCHAR szError[128] = {0};
+		e->GetErrorMessage(szError, 128);
+		e->Delete();
+		g_strMsg.Format("%s", szError);
+
+		return -1;
+	}
+
+	if (strMsg == "")
+	{
+		return -1;
+	}
+
+	m_strMonitorState = strMsg;
+
+	UpdateData(FALSE);
+
+	return 0;
 }
 

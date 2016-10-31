@@ -8,4 +8,5 @@ using namespace std;
 #pragma comment(lib, "psapi.lib") 
 
 DWORD  GetProcessIdByName(char *in_szProcessName);
-double GetProcessMemorySize(char *in_szProcessName);
+double GetProcessCommitMemorySize(char *in_szProcessName);
+PROCESS_MEMORY_COUNTERS GetProcessMemoryCounters(char *in_szProcessName);

@@ -55,7 +55,7 @@ DWORD GetProcessIdByName(char *in_szProcessName)
 	return dwProcessId;
 }
 
-double GetProcessMemorySize(char *in_szProcessName)
+double GetProcessCommitMemorySize(char *in_szProcessName)
 {
 	AdjustPurview();
 
@@ -79,13 +79,51 @@ double GetProcessMemorySize(char *in_szProcessName)
 		PROCESS_MEMORY_COUNTERS pmc; 
 		GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)); 
 
-		// 任务管理器的默认显示项 - 内存（专用工作集）(虚拟内存)
+		// 提交
+		/*
+			PagefileUsage
+			The Commit Charge value in bytes for this process. 
+			Commit Charge is the total amount of memory that the memory manager 
+			has committed for a running process.
+		*/
 		dProcessMemorySize = pmc.PagefileUsage * 1.0/(1024*1024);
 	}
 
 	CloseHandle(hProcess);
 
 	return dProcessMemorySize;
+}
+
+PROCESS_MEMORY_COUNTERS GetProcessMemoryCounters(char *in_szProcessName)
+{
+	AdjustPurview();
+
+	PROCESS_MEMORY_COUNTERS pmc; 
+	memset(&pmc, 0, sizeof(PROCESS_MEMORY_COUNTERS));
+
+	DWORD dwProcessId = GetProcessIdByName(in_szProcessName);
+	if (dwProcessId == -1)
+	{
+		return pmc;
+	}
+
+	//取得进程的句柄
+	HANDLE hProcess = OpenProcess( 
+		PROCESS_QUERY_INFORMATION |
+		PROCESS_VM_READ,
+		FALSE, 
+		dwProcessId );
+
+	double dProcessMemorySize = 0;
+
+	if (hProcess)
+	{
+		GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)); 
+	}
+
+	CloseHandle(hProcess);
+
+	return pmc;
 }
 
 int DeleteRunningProcess(LPCTSTR in_lpstrClientName)

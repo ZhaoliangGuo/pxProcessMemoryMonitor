@@ -35,6 +35,7 @@ public:
 	afx_msg void OnBnClickedButtonTest();
 	void Init();
 	void SaveConfig();
+	LRESULT UpdateMemoryValue( WPARAM wParam, LPARAM lParam );
 	CString m_strProcessName;
 	CString m_strMonitorState;
 };
