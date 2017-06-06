@@ -58,6 +58,9 @@ CpxProcessMemoryMonitorDlg::CpxProcessMemoryMonitorDlg(CWnd* pParent /*=NULL*/)
 	, m_strMonitorState(_T(""))
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+
+	m_dLastProcessCommitMemSizeInKB = 0;
+	m_dLastProcessWorkingSetInKB    = 0; 
 }
 
 void CpxProcessMemoryMonitorDlg::DoDataExchange(CDataExchange* pDX)
@@ -198,8 +201,11 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 
 	CpxProcessMemoryMonitorDlg *pCpxProcessMemoryMonitorDlg = (CpxProcessMemoryMonitorDlg *)pParam;
 
-	double dProcessCommitMemSize = 0;
-	double dProcessWorkingSet    = 0;
+	double dProcessCommitMemSizeInMB = 0;
+	double dProcessWorkingSetInMB    = 0;
+
+	double dProcessCommitMemSizeInKB = 0;
+	double dProcessWorkingSetInKB    = 0;
 
 	char *pszProcessName = (char *)pCpxProcessMemoryMonitorDlg->m_strProcessName.GetBuffer(pCpxProcessMemoryMonitorDlg->m_strProcessName.GetLength());
 
@@ -224,9 +230,11 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 
 		// 提交内存大小
 		//pmc.PagefileUsage = 16 * 1024 * 1024 * 1024; // test  
-		dProcessCommitMemSize = pmc.PagefileUsage  * 1.0/(1024*1024);
-		dProcessWorkingSet    = pmc.WorkingSetSize * 1.0/(1024*1024);
+		dProcessCommitMemSizeInMB = pmc.PagefileUsage  * 1.0/(1024*1024);
+		dProcessWorkingSetInMB    = pmc.WorkingSetSize * 1.0/(1024*1024);
 
+		dProcessCommitMemSizeInKB = pmc.PagefileUsage  * 1.0/(1024);
+		dProcessWorkingSetInKB    = pmc.WorkingSetSize * 1.0/(1024);
 		//dProcessCommitMemSize = (static_cast<unsigned long>(pmc.PagefileUsage)) * 1.0/(1024*1024);
 		//dProcessWorkingSet    = (static_cast<unsigned long>(pmc.WorkingSetSize)) * 1.0/(1024*1024);
 			
@@ -240,18 +248,29 @@ DWORD WINAPI ThreadStartMonitor(LPVOID pParam)
 			time.wMinute, 
 			time.wSecond,
 			time.wMilliseconds,
-			dProcessCommitMemSize,
-			dProcessWorkingSet
+			dProcessCommitMemSizeInMB,
+			dProcessWorkingSetInMB
 			);
 
 		fflush(fp);
 		fclose(fp);
 
-		g_strMsg.Format("Commit Memory: %5.2fM; Current Working Set: %5.2fM",
-			dProcessCommitMemSize,
-			dProcessWorkingSet);
+		// 计算与上次的变化
+		double dDeltaProcessCommitMemSizeInKB = dProcessCommitMemSizeInKB - pCpxProcessMemoryMonitorDlg->m_dLastProcessCommitMemSizeInKB;
+		double dDeltaProcessWorkingSetInKB    = dProcessWorkingSetInKB    - pCpxProcessMemoryMonitorDlg->m_dLastProcessWorkingSetInKB;
+
+		g_strMsg.Format("Commit Memory       : %-5.2fM    (%s%-4.0fKB);\r\nCurrent Working Set : %-5.2fM    (%s%-4.0fKB)",
+			dProcessCommitMemSizeInMB,
+			(dDeltaProcessCommitMemSizeInKB >= 0) ? "+" : "-",
+			dDeltaProcessCommitMemSizeInKB,
+			dProcessWorkingSetInMB,
+			(dDeltaProcessWorkingSetInKB    >= 0) ? "+" : "-",
+			dDeltaProcessWorkingSetInKB);
 
 		::PostMessage(g_hAppWnd, WM_UPDATE_MEMORY_VALUE, NULL, (LPARAM)g_strMsg.GetBuffer());
+
+		pCpxProcessMemoryMonitorDlg->m_dLastProcessCommitMemSizeInKB = dProcessCommitMemSizeInKB;
+		pCpxProcessMemoryMonitorDlg->m_dLastProcessWorkingSetInKB    = dProcessWorkingSetInKB; 
 
 		Sleep(500);
 	}

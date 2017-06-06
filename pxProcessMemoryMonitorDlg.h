@@ -38,4 +38,8 @@ public:
 	LRESULT UpdateMemoryValue( WPARAM wParam, LPARAM lParam );
 	CString m_strProcessName;
 	CString m_strMonitorState;
+
+public:
+	double m_dLastProcessCommitMemSizeInKB;
+	double m_dLastProcessWorkingSetInKB;   
 };
